@@ -1,0 +1,5 @@
+{
+  "name": "Copy of ARAMEX Regional IT Expenditure Dashboard- 2026-27",
+  "description": "A comprehensive dashboard for ingesting, normalizing, and analyzing regional IT budget data from Excel files, featuring automated validation and master dataset creation.",
+  "requestFramePermissions": []
+}
