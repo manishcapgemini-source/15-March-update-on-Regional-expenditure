@@ -26,6 +26,7 @@ export async function parseVarianceFile(file: File): Promise<VarianceRecord[]> {
             category: row.Category || "Opex",
             itCategory: row["IT Category"] || "Other",
             yearMonth: row["Year/Month"] || "",
+            type: (row.Category || "OPEX").toUpperCase() as any,
             actualUsd,
             budgetUsd,
             variance,

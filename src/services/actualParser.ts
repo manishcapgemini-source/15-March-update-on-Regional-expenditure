@@ -18,7 +18,7 @@ const normalizeForCompare = (value: string) =>
 const COLUMN_ALIASES: Record<string, string[]> = {
   companyCode: ["Company Code", "CompanyCode"],
   businessArea: ["Business Area", "BusAreaCode"],
-  station: ["Station", "Country", "Business Area", "BusAreaCode"],
+  station: ["Station", "Business Area", "BusAreaCode", "Country"],
   it: ["IT"],
   country: ["Country"],
   region: ["Region", "Old Region", "New Region"],
@@ -41,13 +41,14 @@ const COLUMN_ALIASES: Record<string, string[]> = {
   costCenter: ["Cost Center", "CostCenterCode"],
   yearMonth: ["Year/Month", "Year Month", "Period", "Month"],
   supplier: ["Supplier Name and Code", "Vendor Name", "Vendor", "Supplier"],
-  category: ["Expenditure Category", "Category"],
+  category: ["Expenditure Category", "EXENTITURE Category", "Category"],
   itCategory: [
     "IT Category",
     "IT infrastructure expenditures, categorized",
     "IT infrastructure expenditures categorized",
     "IT infrastructure expenditure categorized"
-  ]
+  ],
+  expenditureType: ["Expenditure Type", "Type", "CAPEX/OPEX", "CAPEX or OPEX"]
 };
 
 function getValue(row: Record<string, unknown>, aliases: string | string[]): unknown {
@@ -157,6 +158,21 @@ function getItCategoryValue(row: Record<string, unknown>): string {
   return matchedKey ? safeString(row[matchedKey]) : "";
 }
 
+function getExpenditureType(row: Record<string, unknown>, category: string): "CAPEX" | "OPEX" {
+  const explicit = safeString(getValue(row, COLUMN_ALIASES.expenditureType)).toUpperCase();
+  if (explicit === "CAPEX" || explicit === "OPEX") return explicit as "CAPEX" | "OPEX";
+
+  const cat = category.toUpperCase();
+  if (cat.includes("CAPEX")) return "CAPEX";
+  if (cat.includes("OPEX")) return "OPEX";
+
+  // Default heuristic based on category names if needed
+  const capexKeywords = ["INVESTMENT", "ASSET", "INFRASTRUCTURE", "HARDWARE"];
+  if (capexKeywords.some((k) => cat.includes(k))) return "CAPEX";
+
+  return "OPEX";
+}
+
 function normalizeRegion(region: unknown): string {
   const raw = String(region ?? "").trim();
   const key = raw.toLowerCase();
@@ -257,6 +273,10 @@ function buildWideFormatTransactions(
         value
       ]);
 
+      const category = safeString(getValue(row, COLUMN_ALIASES.category));
+      const itCategory = getItCategoryValue(row);
+      const expenditureType = getExpenditureType(row, category || itCategory);
+
       output.push({
         id,
         year,
@@ -284,8 +304,9 @@ function buildWideFormatTransactions(
         costCenter: safeString(getValue(row, COLUMN_ALIASES.costCenter)),
         yearMonth,
         supplier,
-        category: safeString(getValue(row, COLUMN_ALIASES.category)),
-        itCategory: getItCategoryValue(row),
+        category,
+        itCategory,
+        expenditureType,
         sourceFile: fileName
       });
     });
@@ -351,6 +372,10 @@ function buildTransactionFormatTransactions(
         usd
       ]);
 
+      const category = safeString(getValue(row, COLUMN_ALIASES.category));
+      const itCategory = getItCategoryValue(row);
+      const expenditureType = getExpenditureType(row, category || itCategory);
+
       const tx: FinancialTransaction = {
         id,
         year,
@@ -378,8 +403,9 @@ function buildTransactionFormatTransactions(
         costCenter: safeString(getValue(row, COLUMN_ALIASES.costCenter)),
         yearMonth,
         supplier,
-        category: safeString(getValue(row, COLUMN_ALIASES.category)),
-        itCategory: getItCategoryValue(row),
+        category,
+        itCategory,
+        expenditureType,
         sourceFile: fileName
       };
 

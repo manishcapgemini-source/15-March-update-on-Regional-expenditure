@@ -135,7 +135,7 @@
     companyCode: ['Company Code', 'CompanyCode'],
     businessArea: ['Business Area', 'BusAreaCode'],
     it: ['IT'],
-    station: ['Station', 'Country'],
+    station: ['Station', 'Business Area', 'BusAreaCode', 'Country'],
     region: ['Region', 'Old Region', 'New Region'],
     vp: ['VP', 'IT Regional Head'],
     documentType: ['Document Type'],
@@ -156,7 +156,7 @@
     costCenter: ['Cost Center', 'CostCenterCode'],
     yearMonth: ['Year/Month', 'Year Month', 'Period', 'Month'],
     supplier: ['Supplier Name and Code', 'Vendor Name', 'Vendor', 'Supplier'],
-    category: ['Expenditure Category', 'Category'],
+    category: ['Expenditure Category', 'EXENTITURE Category', 'Category'],
     itCategory: [
       'IT Category',
       'IT infrastructure expenditures, categorized',
@@ -189,19 +189,20 @@
 
   function MultiSelectCheckbox({ 
     label, 
-    options, 
-    selected, 
+    options = [], 
+    selected = [], 
     onChange,
     className 
   }: { 
     label: string; 
-    options: string[]; 
-    selected: string[]; 
+    options?: string[]; 
+    selected?: string[]; 
     onChange: (values: string[]) => void;
     className?: string;
   }) {
     const [isOpen, setIsOpen] = useState(false);
     const containerRef = useRef<HTMLDivElement>(null);
+    const [searchTerm, setSearchTerm] = useState('');
 
     useEffect(() => {
       const handleClickOutside = (event: MouseEvent) => {
@@ -213,16 +214,17 @@
       return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
+    const safeOptions = Array.isArray(options) ? options : [];
+    const safeSelected = Array.isArray(selected) ? selected : [];
+
     const toggleOption = (option: string) => {
-      const newSelected = selected.includes(option)
-        ? selected.filter(item => item !== option)
-        : [...selected, option];
+      const newSelected = safeSelected.includes(option)
+        ? safeSelected.filter(item => item !== option)
+        : [...safeSelected, option];
       onChange(newSelected);
     };
 
-    const [searchTerm, setSearchTerm] = useState('');
-
-    const filteredOptions = (options || []).filter(opt =>
+    const filteredOptions = safeOptions.filter(opt =>
       String(opt || '').toLowerCase().includes(searchTerm.toLowerCase())
     );
 
@@ -233,7 +235,7 @@
           className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm flex items-center justify-between hover:bg-slate-100 transition-colors"
         >
           <span className="truncate max-w-[150px]">
-            {selected.length === 0 ? `All ${label}s` : `${selected.length} Selected`}
+            {safeSelected.length === 0 ? `All ${label}s` : `${safeSelected.length} Selected`}
           </span>
           <ChevronDown size={14} className={cn("transition-transform", isOpen && "rotate-180")} />
         </button>
@@ -256,7 +258,7 @@
                 </button>
               </div>
 
-              {options.length > 5 && (
+              {safeOptions.length > 5 && (
                 <div className="relative">
                   <Search className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400" size={12} />
                   <input
@@ -277,7 +279,7 @@
                     <label key={option} className="flex items-center gap-3 p-2 hover:bg-slate-50 rounded-lg cursor-pointer transition-colors group">
                       <input
                         type="checkbox"
-                        checked={selected.includes(option)}
+                        checked={safeSelected.includes(option)}
                         onChange={() => toggleOption(option)}
                         className="w-4 h-4 rounded border-slate-300 text-rose-600 focus:ring-rose-500"
                       />
@@ -511,6 +513,7 @@
       supplier: [] as string[],
       category: [] as string[],
       itCategory: [] as string[],
+      budgetType: [] as string[],
       costCenter: [] as string[],
       glAccount: [] as string[],
       search: ''
@@ -541,6 +544,7 @@
             supplier: [],
             category: [],
             itCategory: [],
+            budgetType: [],
             costCenter: [],
             glAccount: [],
             search: ''
@@ -687,9 +691,15 @@
     }, [budgetData]);
 
     const monthsPassed = useMemo(() => {
-      const months = new Set(actualData.map(t => t.yearMonth));
+      const yearFilter = selectedYear === 'All Years' ? undefined : parseInt(selectedYear, 10);
+      const months = new Set(
+        actualData
+          .filter(t => (yearFilter ? t.year === yearFilter : true))
+          .map(t => t.yearMonth)
+          .filter(Boolean)
+      );
       return months.size || 1;
-    }, [actualData]);
+    }, [actualData, selectedYear]);
 
     const varianceResult = useMemo(() => {
       try {
@@ -719,12 +729,14 @@
         return budgetData.filter(Boolean).filter(row => {
           const rowYear = String(row.year);
           if (selectedYear !== 'All Years' && rowYear !== selectedYear) return false;
+
           return (
             (filters.region.length === 0 || filters.region.includes(row.region)) &&
             (filters.country.length === 0 || filters.country.includes(row.station as string)) &&
             (filters.station.length === 0 || filters.station.includes(row.station as string)) &&
             (filters.category.length === 0 || filters.category.includes(row.category)) &&
             (filters.itCategory.length === 0 || filters.itCategory.includes(row.itCategory)) &&
+            (filters.budgetType.length === 0 || filters.budgetType.includes(String(row.type || ''))) &&
             (filters.yearMonth.length === 0 || filters.yearMonth.includes(row.yearMonth))
           );
         });
@@ -741,6 +753,7 @@
         if (filters.station.length > 0 && !filters.station.includes(v.station as string)) return false;
         if (filters.category.length > 0 && !filters.category.includes(v.category)) return false;
         if (filters.itCategory.length > 0 && !filters.itCategory.includes(v.itCategory)) return false;
+        if (filters.budgetType.length > 0 && !filters.budgetType.includes(v.type)) return false;
         if (filters.yearMonth.length > 0 && !filters.yearMonth.includes(v.yearMonth)) return false;
         return true;
       });
@@ -1195,6 +1208,7 @@
           (filters.supplier.length === 0 || filters.supplier.includes(String(row.supplier || ''))) &&
           (filters.category.length === 0 || filters.category.includes(String(row.category || ''))) &&
           (filters.itCategory.length === 0 || filters.itCategory.includes(String(row.itCategory || ''))) &&
+          (filters.budgetType.length === 0 || filters.budgetType.includes(String(row.expenditureType || ''))) &&
           (filters.costCenter.length === 0 || filters.costCenter.includes(String(row.costCenter || ''))) &&
           (filters.glAccount.length === 0 || filters.glAccount.includes(String(row.glAccount || ''))) &&
           (
@@ -2394,6 +2408,7 @@
           validActual.map(r => String(r.itCategory || '')),
           validBudget.map(r => String(r.itCategory || ''))
         ),
+        budgetTypes: Array.from(new Set(validBudget.map(r => String(r.type || '')))).filter(v => v && v !== 'undefined').sort(),
         costCenters: Array.from(new Set(validActual.map(r => String(r.costCenter || '')))).filter(v => v && v !== 'undefined').sort(),
         glAccounts: Array.from(new Set(validActual.map(r => String(r.glAccount || '')))).filter(v => v && v !== 'undefined').sort()
       };
@@ -2787,6 +2802,7 @@
                   supplier: [], 
                   category: [], 
                   itCategory: [], 
+                  budgetType: [],
                   costCenter: [], 
                   glAccount: [], 
                   search: '' 
@@ -2819,6 +2835,7 @@
                 { label: 'Supplier', key: 'supplier', options: uniqueValues.suppliers },
                 { label: 'Category', key: 'category', options: uniqueValues.categories },
                 { label: 'IT Category', key: 'itCategory', options: uniqueValues.itCategories },
+                { label: 'Budget Type', key: 'budgetType', options: uniqueValues.budgetTypes },
                 { label: 'Cost Center', key: 'costCenter', options: uniqueValues.costCenters },
                 { label: 'GL Account', key: 'glAccount', options: uniqueValues.glAccounts }
               ].map((filter) => (
@@ -2834,6 +2851,31 @@
               ))}
             </div>
           </div>
+
+          {/* Warning Banner for Mixed Budgets */}
+          {uploadedFileContents.length > 0 && budgetData.length > 0 && (
+            (() => {
+              const actualTypes = new Set(filteredData.map(d => (d.category || '').toUpperCase()));
+              const hasCapex = actualTypes.has('CAPEX');
+              const hasOpex = actualTypes.has('OPEX');
+              
+              if ((hasCapex && !hasOpex) || (!hasCapex && hasOpex)) {
+                return (
+                  <motion.div 
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="bg-amber-50 border border-amber-200 p-4 rounded-2xl flex items-center gap-3 text-amber-800"
+                  >
+                    <AlertTriangle className="text-amber-500" size={20} />
+                    <div className="text-sm">
+                      <span className="font-bold">Partial Data Detected:</span> Your actual file only contains <span className="font-bold">{hasCapex ? 'CAPEX' : 'OPEX'}</span> data. Variance analysis for {hasCapex ? 'OPEX' : 'CAPEX'} will show 100% savings.
+                    </div>
+                  </motion.div>
+                );
+              }
+              return null;
+            })()
+          )}
 
           {activeTab === 'dashboard' && (
             <div className="space-y-8">
@@ -4780,6 +4822,7 @@
                         supplier: [],
                         category: [],
                         itCategory: [],
+                        budgetType: [],
                         costCenter: [],
                         glAccount: [],
                         search: ''

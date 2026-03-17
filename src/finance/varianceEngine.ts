@@ -1,4 +1,4 @@
-import { BudgetRecord, FinancialTransaction, VarianceRecord } from "../types";
+import { BudgetRecord, FinancialTransaction, VarianceRecord, ExpenditureType } from "../types";
 
 type VarianceKeyParts = {
   year: number;
@@ -7,6 +7,7 @@ type VarianceKeyParts = {
   category: string;
   itCategory: string;
   yearMonth: string;
+  type: ExpenditureType;
 };
 
 function normalizeText(value: unknown): string {
@@ -17,6 +18,17 @@ function normalizeKeyPart(value: unknown): string {
   return normalizeText(value).toLowerCase();
 }
 
+function normalizeStation(value: unknown): string {
+  return normalizeText(value || "UNKNOWN").toUpperCase();
+}
+
+function normalizeType(value: unknown): ExpenditureType {
+  const str = String(value || "").toUpperCase().trim();
+  if (str.includes("CAPEX")) return "CAPEX";
+  if (str.includes("OPEX")) return "OPEX";
+  return "OPEX";
+}
+
 function buildVarianceKey(parts: VarianceKeyParts): string {
   return [
     parts.year,
@@ -24,7 +36,8 @@ function buildVarianceKey(parts: VarianceKeyParts): string {
     normalizeKeyPart(parts.station),
     normalizeKeyPart(parts.category),
     normalizeKeyPart(parts.itCategory),
-    normalizeKeyPart(parts.yearMonth)
+    normalizeKeyPart(parts.yearMonth),
+    normalizeKeyPart(parts.type)
   ].join("|");
 }
 
@@ -73,30 +86,32 @@ export function buildVarianceRecords(
   for (const tx of filteredActuals) {
     const keyParts: VarianceKeyParts = {
       year: tx.year,
-      region: tx.region,
-      station: tx.businessArea || "UNKNOWN",
-      category: tx.category,
-      itCategory: tx.itCategory,
-      yearMonth: tx.yearMonth
+      region: normalizeText(tx.region),
+      station: normalizeStation(tx.businessArea || tx.station || tx.country || "UNKNOWN"),
+      category: normalizeText(tx.category || "Uncategorized"),
+      itCategory: normalizeText(tx.itCategory || tx.category || "Uncategorized"),
+      yearMonth: normalizeText(tx.yearMonth || `${tx.year}/01`),
+      type: normalizeType(tx.expenditureType || tx.category)
     };
 
     const key = buildVarianceKey(keyParts);
-    actualsMap.set(key, (actualsMap.get(key) || 0) + tx.usd);
+    actualsMap.set(key, (actualsMap.get(key) || 0) + (tx.usd || 0));
     keyMeta.set(key, keyParts);
   }
 
   for (const budget of filteredBudgets) {
     const keyParts: VarianceKeyParts = {
       year: budget.year,
-      region: budget.region,
-      station: budget.station,
-      category: budget.category,
-      itCategory: budget.itCategory || budget.category,
-      yearMonth: budget.yearMonth || `${budget.year}/01`
+      region: normalizeText(budget.region),
+      station: normalizeStation(budget.station),
+      category: normalizeText(budget.category || "Uncategorized"),
+      itCategory: normalizeText(budget.itCategory || budget.category || "Uncategorized"),
+      yearMonth: normalizeText(budget.yearMonth || `${budget.year}/01`),
+      type: normalizeType(budget.type)
     };
 
     const key = buildVarianceKey(keyParts);
-    budgetsMap.set(key, (budgetsMap.get(key) || 0) + budget.budget);
+    budgetsMap.set(key, (budgetsMap.get(key) || 0) + (budget.budget || 0));
     keyMeta.set(key, keyParts);
   }
 
@@ -124,6 +139,7 @@ export function buildVarianceRecords(
       category: meta.category,
       itCategory: meta.itCategory,
       yearMonth: meta.yearMonth,
+      type: meta.type,
       actualUsd,
       budgetUsd,
       variance,
@@ -131,7 +147,8 @@ export function buildVarianceRecords(
       budgetUsedPercent,
       runRate,
       forecastYearEnd,
-      overspendRisk
+      overspendRisk,
+      expenditureType: meta.type
     };
   });
 

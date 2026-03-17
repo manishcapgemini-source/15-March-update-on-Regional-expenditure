@@ -29,7 +29,7 @@ export interface BudgetRecord {
   country?: string;
   month?: string;
   vendor?: string;
-  expenditureType?: string;
+  expenditureType?: ExpenditureType;
   actual?: number;
   variance?: number;
 }
@@ -90,7 +90,7 @@ export interface FinancialTransaction {
   vendor?: string;
   station?: string;
   month?: string;
-  expenditureType?: string;
+  expenditureType?: ExpenditureType;
   actual?: number;
   budget?: number;
   variance?: number;
@@ -130,6 +130,7 @@ export interface VarianceRecord {
   category: string;
   itCategory: string;
   yearMonth: string;
+  type: ExpenditureType;
   actualUsd: number;
   budgetUsd: number;
   variance: number;
@@ -143,7 +144,7 @@ export interface VarianceRecord {
   country?: string;
   vendor?: string;
   month?: string;
-  expenditureType?: string;
+  expenditureType?: ExpenditureType;
 }
 
 export interface DashboardStats {
@@ -159,6 +160,7 @@ export interface PivotRow {
   supplier: string;
   category: string;
   itCategory: string;
+  expenditureType?: ExpenditureType;
   grandTotal: number;
   months: Record<string, number>;
 }
@@ -279,7 +281,7 @@ export interface ExcelActualRow {
   vendor: string;
   category: string;
   itCategory: string;
-  expenditureType: string;
+  expenditureType: ExpenditureType;
   yearMonth: string;
   usd: number;
 }
@@ -291,7 +293,7 @@ export interface ExcelBudgetRow {
   station: string;
   category: string;
   itCategory: string;
-  expenditureType: string;
+  expenditureType: ExpenditureType;
   yearMonth: string;
   budget: number;
 }
