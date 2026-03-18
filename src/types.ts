@@ -20,6 +20,8 @@ export interface BudgetRecord {
   type: ExpenditureType;
   budget: number;
   itCategory?: string;
+  budgetCategory?: string;
+  budgetItem?: string;
   yearMonth?: string;
   sourceFile?: string;
   uploadedAt?: string;
@@ -84,6 +86,8 @@ export interface FinancialTransaction {
   supplier: string;
   category: string;
   itCategory: string;
+  budgetCategory?: string;
+  budgetItem?: string;
   sourceFile: string;
 
   // optional normalized helper fields
@@ -129,6 +133,8 @@ export interface VarianceRecord {
   station: string;
   category: string;
   itCategory: string;
+  budgetCategory?: string;
+  budgetItem?: string;
   yearMonth: string;
   type: ExpenditureType;
   actualUsd: number;

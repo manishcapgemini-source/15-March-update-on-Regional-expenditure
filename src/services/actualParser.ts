@@ -48,6 +48,8 @@ const COLUMN_ALIASES: Record<string, string[]> = {
     "IT infrastructure expenditures categorized",
     "IT infrastructure expenditure categorized"
   ],
+  budgetCategory: ["Budget Category", "BudgetCategory"],
+  budgetItem: ["Budget Item", "BudgetItem", "Items", "Item"],
   expenditureType: ["Expenditure Type", "Type", "CAPEX/OPEX", "CAPEX or OPEX"]
 };
 
@@ -275,6 +277,8 @@ function buildWideFormatTransactions(
 
       const category = safeString(getValue(row, COLUMN_ALIASES.category));
       const itCategory = getItCategoryValue(row);
+      const budgetCategory = safeString(getValue(row, COLUMN_ALIASES.budgetCategory));
+      const budgetItem = safeString(getValue(row, COLUMN_ALIASES.budgetItem));
       const expenditureType = getExpenditureType(row, category || itCategory);
 
       output.push({
@@ -306,6 +310,8 @@ function buildWideFormatTransactions(
         supplier,
         category,
         itCategory,
+        budgetCategory,
+        budgetItem,
         expenditureType,
         sourceFile: fileName
       });
@@ -374,6 +380,8 @@ function buildTransactionFormatTransactions(
 
       const category = safeString(getValue(row, COLUMN_ALIASES.category));
       const itCategory = getItCategoryValue(row);
+      const budgetCategory = safeString(getValue(row, COLUMN_ALIASES.budgetCategory));
+      const budgetItem = safeString(getValue(row, COLUMN_ALIASES.budgetItem));
       const expenditureType = getExpenditureType(row, category || itCategory);
 
       const tx: FinancialTransaction = {
@@ -405,6 +413,8 @@ function buildTransactionFormatTransactions(
         supplier,
         category,
         itCategory,
+        budgetCategory,
+        budgetItem,
         expenditureType,
         sourceFile: fileName
       };

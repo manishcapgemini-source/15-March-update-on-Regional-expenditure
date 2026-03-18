@@ -163,6 +163,8 @@
       'IT infrastructure expenditures categorized',
       'IT infrastructure expenditure categorized'
     ],
+    budgetCategory: ['Budget Category', 'BudgetCategory'],
+    budgetItem: ['Budget Item', 'BudgetItem', 'Items', 'Item'],
     budgetUsd: ['Budget USD', 'USD Budget', 'Budget', 'Budget Amount', 'BudgetUsd']
   };
 
@@ -513,6 +515,8 @@
       supplier: [] as string[],
       category: [] as string[],
       itCategory: [] as string[],
+      budgetCategory: [] as string[],
+      budgetItem: [] as string[],
       budgetType: [] as string[],
       costCenter: [] as string[],
       glAccount: [] as string[],
@@ -544,6 +548,8 @@
             supplier: [],
             category: [],
             itCategory: [],
+            budgetCategory: [],
+            budgetItem: [],
             budgetType: [],
             costCenter: [],
             glAccount: [],
@@ -608,6 +614,8 @@
       station: '',
       category: '',
       itCategory: '',
+      budgetCategory: '',
+      budgetItem: '',
       yearMonth: '',
       budget: '',
       item: '',
@@ -640,16 +648,18 @@
     };
 
     const handleAddManualBudget = () => {
-      const { region, station, yearMonth, budget, category, itCategory, item, type } = manualBudget;
+      const { region, station, yearMonth, budget, category, itCategory, budgetCategory, budgetItem, item, type } = manualBudget;
       
       if (!region || !station || !yearMonth || !budget) {
         alert("Please fill in all required fields (Region, Station, Year/Month, Budget)");
         return;
       }
 
+      const id = `${region}|${station}|${category}|${itCategory}|${budgetCategory}|${budgetItem}|${yearMonth}`;
+
       saveBudgetRows([
         {
-          id: `manual-${Date.now()}`,
+          id: id || `manual-${Date.now()}`,
           year: parseInt(yearMonth.split('/')[0] || "2025", 10),
           region,
           station,
@@ -657,7 +667,9 @@
           budget: Number(budget),
           category: category || 'Opex',
           itCategory: itCategory || 'General',
-          item: item || 'Manual Entry',
+          budgetCategory: budgetCategory || '',
+          budgetItem: budgetItem || '',
+          item: budgetItem || item || 'Manual Entry',
           type: (type || 'OPEX') as "CAPEX" | "OPEX",
           sourceFile: 'Manual Entry',
           uploadedAt: new Date().toLocaleDateString()
@@ -669,6 +681,8 @@
         station: '',
         category: '',
         itCategory: '',
+        budgetCategory: '',
+        budgetItem: '',
         yearMonth: '',
         budget: '',
         item: '',
@@ -736,6 +750,8 @@
             (filters.station.length === 0 || filters.station.includes(row.station as string)) &&
             (filters.category.length === 0 || filters.category.includes(row.category)) &&
             (filters.itCategory.length === 0 || filters.itCategory.includes(row.itCategory)) &&
+            (filters.budgetCategory.length === 0 || filters.budgetCategory.includes(row.budgetCategory || '')) &&
+            (filters.budgetItem.length === 0 || filters.budgetItem.includes(row.budgetItem || '')) &&
             (filters.budgetType.length === 0 || filters.budgetType.includes(String(row.type || ''))) &&
             (filters.yearMonth.length === 0 || filters.yearMonth.includes(row.yearMonth))
           );
@@ -753,6 +769,8 @@
         if (filters.station.length > 0 && !filters.station.includes(v.station as string)) return false;
         if (filters.category.length > 0 && !filters.category.includes(v.category)) return false;
         if (filters.itCategory.length > 0 && !filters.itCategory.includes(v.itCategory)) return false;
+        if (filters.budgetCategory.length > 0 && !filters.budgetCategory.includes(v.budgetCategory || '')) return false;
+        if (filters.budgetItem.length > 0 && !filters.budgetItem.includes(v.budgetItem || '')) return false;
         if (filters.budgetType.length > 0 && !filters.budgetType.includes(v.type)) return false;
         if (filters.yearMonth.length > 0 && !filters.yearMonth.includes(v.yearMonth)) return false;
         return true;
@@ -893,9 +911,11 @@
         const station = String(getValue(row, COLUMN_ALIASES.station)).trim();
         const category = String(getValue(row, COLUMN_ALIASES.category)).trim();
         const itCategory = String(getValue(row, COLUMN_ALIASES.itCategory)).trim();
+        const budgetCategory = String(getValue(row, COLUMN_ALIASES.budgetCategory)).trim();
+        const budgetItem = String(getValue(row, COLUMN_ALIASES.budgetItem)).trim();
         const yearMonth = String(getValue(row, COLUMN_ALIASES.yearMonth)).trim();
 
-        const id = `${region}|${station}|${category}|${itCategory}|${yearMonth}`;
+        const id = `${region}|${station}|${category}|${itCategory}|${budgetCategory}|${budgetItem}|${yearMonth}`;
 
         return {
           id,
@@ -904,9 +924,11 @@
           station,
           category: category || 'Opex',
           itCategory,
+          budgetCategory,
+          budgetItem,
           yearMonth,
           budget: budgetUsd,
-          item: 'Imported Record',
+          item: budgetItem || 'Imported Record',
           type: (category || 'Opex').toUpperCase() as "CAPEX" | "OPEX",
           sourceFile: fileName,
           uploadedAt: new Date().toLocaleDateString()
@@ -1208,6 +1230,8 @@
           (filters.supplier.length === 0 || filters.supplier.includes(String(row.supplier || ''))) &&
           (filters.category.length === 0 || filters.category.includes(String(row.category || ''))) &&
           (filters.itCategory.length === 0 || filters.itCategory.includes(String(row.itCategory || ''))) &&
+          (filters.budgetCategory.length === 0 || filters.budgetCategory.includes(String(row.budgetCategory || ''))) &&
+          (filters.budgetItem.length === 0 || filters.budgetItem.includes(String(row.budgetItem || ''))) &&
           (filters.budgetType.length === 0 || filters.budgetType.includes(String(row.expenditureType || ''))) &&
           (filters.costCenter.length === 0 || filters.costCenter.includes(String(row.costCenter || ''))) &&
           (filters.glAccount.length === 0 || filters.glAccount.includes(String(row.glAccount || ''))) &&
@@ -2408,6 +2432,14 @@
           validActual.map(r => String(r.itCategory || '')),
           validBudget.map(r => String(r.itCategory || ''))
         ),
+        budgetCategories: combine(
+          validActual.map(r => String(r.budgetCategory || '')),
+          validBudget.map(r => String(r.budgetCategory || ''))
+        ),
+        budgetItems: combine(
+          validActual.map(r => String(r.budgetItem || '')),
+          validBudget.map(r => String(r.budgetItem || ''))
+        ),
         budgetTypes: Array.from(new Set(validBudget.map(r => String(r.type || '')))).filter(v => v && v !== 'undefined').sort(),
         costCenters: Array.from(new Set(validActual.map(r => String(r.costCenter || '')))).filter(v => v && v !== 'undefined').sort(),
         glAccounts: Array.from(new Set(validActual.map(r => String(r.glAccount || '')))).filter(v => v && v !== 'undefined').sort()
@@ -2802,6 +2834,8 @@
                   supplier: [], 
                   category: [], 
                   itCategory: [], 
+                  budgetCategory: [],
+                  budgetItem: [],
                   budgetType: [],
                   costCenter: [], 
                   glAccount: [], 
@@ -2835,6 +2869,8 @@
                 { label: 'Supplier', key: 'supplier', options: uniqueValues.suppliers },
                 { label: 'Category', key: 'category', options: uniqueValues.categories },
                 { label: 'IT Category', key: 'itCategory', options: uniqueValues.itCategories },
+                { label: 'Budget Category', key: 'budgetCategory', options: uniqueValues.budgetCategories },
+                { label: 'Budget Item', key: 'budgetItem', options: uniqueValues.budgetItems },
                 { label: 'Budget Type', key: 'budgetType', options: uniqueValues.budgetTypes },
                 { label: 'Cost Center', key: 'costCenter', options: uniqueValues.costCenters },
                 { label: 'GL Account', key: 'glAccount', options: uniqueValues.glAccounts }
@@ -3325,6 +3361,28 @@
                             className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 transition-all text-sm"
                             value={manualBudget.itCategory}
                             onChange={(e) => setManualBudget(prev => ({ ...prev, itCategory: e.target.value }))}
+                          />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-1.5">
+                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Budget Category</label>
+                          <input 
+                            type="text" 
+                            placeholder="e.g. Infrastructure"
+                            className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 transition-all text-sm"
+                            value={manualBudget.budgetCategory}
+                            onChange={(e) => setManualBudget(prev => ({ ...prev, budgetCategory: e.target.value }))}
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Budget Item</label>
+                          <input 
+                            type="text" 
+                            placeholder="e.g. Server"
+                            className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 transition-all text-sm"
+                            value={manualBudget.budgetItem}
+                            onChange={(e) => setManualBudget(prev => ({ ...prev, budgetItem: e.target.value }))}
                           />
                         </div>
                       </div>
@@ -4822,6 +4880,8 @@
                         supplier: [],
                         category: [],
                         itCategory: [],
+                        budgetCategory: [],
+                        budgetItem: [],
                         budgetType: [],
                         costCenter: [],
                         glAccount: [],

@@ -66,6 +66,13 @@ export type VarianceEngineResult = {
   };
 };
 
+function normalizeMatchValue(value: unknown): string {
+  return String(value ?? "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .toUpperCase();
+}
+
 export function buildVarianceRecords(
   actualData: FinancialTransaction[],
   budgetData: BudgetRecord[],
@@ -84,12 +91,15 @@ export function buildVarianceRecords(
     : budgetData;
 
   for (const tx of filteredActuals) {
+    const matchedCategory = tx.budgetCategory ? normalizeMatchValue(tx.budgetCategory) : normalizeText(tx.category || "Uncategorized");
+    const matchedItem = tx.budgetItem ? normalizeMatchValue(tx.budgetItem) : normalizeText(tx.itCategory || tx.category || "Uncategorized");
+
     const keyParts: VarianceKeyParts = {
       year: tx.year,
       region: normalizeText(tx.region),
       station: normalizeStation(tx.businessArea || tx.station || tx.country || "UNKNOWN"),
-      category: normalizeText(tx.category || "Uncategorized"),
-      itCategory: normalizeText(tx.itCategory || tx.category || "Uncategorized"),
+      category: matchedCategory,
+      itCategory: matchedItem,
       yearMonth: normalizeText(tx.yearMonth || `${tx.year}/01`),
       type: normalizeType(tx.expenditureType || tx.category)
     };
@@ -100,12 +110,15 @@ export function buildVarianceRecords(
   }
 
   for (const budget of filteredBudgets) {
+    const matchedCategory = normalizeMatchValue(budget.category || "Uncategorized");
+    const matchedItem = normalizeMatchValue(budget.item || budget.category || "Uncategorized");
+
     const keyParts: VarianceKeyParts = {
       year: budget.year,
       region: normalizeText(budget.region),
       station: normalizeStation(budget.station),
-      category: normalizeText(budget.category || "Uncategorized"),
-      itCategory: normalizeText(budget.itCategory || budget.category || "Uncategorized"),
+      category: matchedCategory,
+      itCategory: matchedItem,
       yearMonth: normalizeText(budget.yearMonth || `${budget.year}/01`),
       type: normalizeType(budget.type)
     };
