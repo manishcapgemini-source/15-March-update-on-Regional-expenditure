@@ -1,6 +1,6 @@
 import express from "express";
-import { readFinanceData, writeFinanceData, clearFinanceData } from "../services/financeStore";
-import { validatePayload } from "../services/financeValidator";
+import { readFinanceData, writeFinanceData, clearFinanceData } from "../services/financeStore.ts";
+import { validatePayload } from "../services/financeValidator.ts";
 
 const router = express.Router();
 

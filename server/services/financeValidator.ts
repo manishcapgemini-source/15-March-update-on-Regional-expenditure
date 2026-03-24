@@ -1,4 +1,4 @@
-import { ExcelActualRow, ExcelBudgetRow } from "../../src/types";
+import type { ExcelActualRow, ExcelBudgetRow } from "../../src/types.ts";
 
 function validateActualRow(row: ExcelActualRow, index: number): string[] {
   const errors: string[] = [];

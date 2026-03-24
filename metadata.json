@@ -1,5 +1,5 @@
 {
-  "name": "15-March -ARAMEX Regional IT Expenditure Dashboard- 2026-27",
-  "description": "A comprehensive dashboard for ingesting, normalizing, and analyzing regional IT budget data from Excel files, featuring automated validation and master dataset creation.",
+  "name": "IT Expenditure Variance Analyzer",
+  "description": "A CFO-style dashboard for analyzing IT Actual vs Budget variances, forecasting year-end spend, and identifying risk flags.",
   "requestFramePermissions": []
 }

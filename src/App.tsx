@@ -371,11 +371,37 @@
     return row.itCategory?.trim() || row.category?.trim() || 'Other Infrastructure Service';
   }
 
+  function getMonthPart(yearMonth?: string): string {
+    if (!yearMonth) return '';
+    const parts = String(yearMonth).split(/[\/\-]/);
+    return (parts[1] || '').padStart(2, '0');
+  }
+
+  function getQuarterMonths(quarter: 'Q1' | 'Q2' | 'Q3' | 'Q4'): string[] {
+    switch (quarter) {
+      case 'Q1': return ['01', '02', '03'];
+      case 'Q2': return ['04', '05', '06'];
+      case 'Q3': return ['07', '08', '09'];
+      case 'Q4': return ['10', '11', '12'];
+      default: return [];
+    }
+  }
+
+  function getHalfYearMonths(half: 'H1' | 'H2'): string[] {
+    return half === 'H1'
+      ? ['01', '02', '03', '04', '05', '06']
+      : ['07', '08', '09', '10', '11', '12'];
+  }
+
   function App() {
     const [isUiStateHydrated, setIsUiStateHydrated] = useState(false);
     const [uploadedFileContents, setUploadedFileContents] = useState<UploadedFileData[]>([]);
     const [budgetData, setBudgetData] = useState<BudgetRecord[]>([]);
     const [excelSyncInfo, setExcelSyncInfo] = useState<{ fileName: string; submittedAt: string } | null>(null);
+    const [periodView, setPeriodView] = useState<'monthly' | 'quarterly' | 'halfYearly' | 'fullYear'>('monthly');
+    const [selectedQuarters, setSelectedQuarters] = useState<('Q1' | 'Q2' | 'Q3' | 'Q4')[]>([]);
+    const [selectedHalves, setSelectedHalves] = useState<('H1' | 'H2')[]>([]);
+    const [selectedMonths, setSelectedMonths] = useState<string[]>([]);
 
     // Poll for Excel sync data
     useEffect(() => {
@@ -505,7 +531,7 @@
 
     const [isDragging, setIsDragging] = useState(false);
     const [activeTab, setActiveTab] = useState<'dashboard' | 'transactions' | 'analyst' | 'data' | 'budget' | 'variance' | 'vendorGovernance'>('dashboard');
-    const [selectedYear, setSelectedYear] = useState<string>('All Years');
+    const [selectedYears, setSelectedYears] = useState<string[]>([]);
     const [filters, setFilters] = useState({
       fiscalYear: [] as string[],
       yearMonth: [] as string[],
@@ -525,19 +551,38 @@
     const [momThreshold, setMomThreshold] = useState(35);
 
     useEffect(() => {
-      const savedUiState = safeGetLocalStorage(STORAGE_KEYS.uiState, null as null | {
-        selectedYear: string;
-        activeTab: 'dashboard' | 'transactions' | 'analyst' | 'data' | 'budget' | 'variance' | 'vendorGovernance';
-        momThreshold: number;
-        filters: typeof filters;
-      });
+      const savedUiState = safeGetLocalStorage(STORAGE_KEYS.uiState, null as any);
 
       if (savedUiState) {
-        setSelectedYear(savedUiState.selectedYear || 'All Years');
+        if (Array.isArray(savedUiState.selectedYears)) {
+          setSelectedYears(savedUiState.selectedYears);
+        } else if (savedUiState.selectedYear) {
+          setSelectedYears(savedUiState.selectedYear === 'All Years' ? [] : [savedUiState.selectedYear]);
+        }
+
+        if (Array.isArray(savedUiState.selectedQuarters)) {
+          setSelectedQuarters(savedUiState.selectedQuarters);
+        } else if (savedUiState.selectedQuarter) {
+          setSelectedQuarters([savedUiState.selectedQuarter]);
+        }
+
+        if (Array.isArray(savedUiState.selectedHalves)) {
+          setSelectedHalves(savedUiState.selectedHalves);
+        } else if (savedUiState.selectedHalf) {
+          setSelectedHalves([savedUiState.selectedHalf]);
+        }
+
+        if (Array.isArray(savedUiState.selectedMonths)) {
+          setSelectedMonths(savedUiState.selectedMonths);
+        } else if (savedUiState.selectedMonth) {
+          setSelectedMonths([savedUiState.selectedMonth]);
+        }
+
         setActiveTab(savedUiState.activeTab || 'dashboard');
         setMomThreshold(
           typeof savedUiState.momThreshold === 'number' ? savedUiState.momThreshold : 35
         );
+        setPeriodView(savedUiState.periodView || 'monthly');
         setFilters(
           savedUiState.filters || {
             fiscalYear: [],
@@ -565,12 +610,16 @@
       if (!isUiStateHydrated) return;
 
       safeSetLocalStorage(STORAGE_KEYS.uiState, {
-        selectedYear,
+        selectedYears,
+        selectedQuarters,
+        selectedHalves,
+        selectedMonths,
         activeTab,
         momThreshold,
-        filters
+        filters,
+        periodView
       });
-    }, [selectedYear, activeTab, momThreshold, filters, isUiStateHydrated]);
+    }, [selectedYears, selectedQuarters, selectedHalves, selectedMonths, activeTab, momThreshold, filters, periodView, isUiStateHydrated]);
 
     // AI Analyst State
     const [chatMessages, setChatMessages] = useState<{ role: 'user' | 'ai'; content: string; analysisResult?: ComputedResult | null }[]>([]);
@@ -704,20 +753,17 @@
       }
     }, [budgetData]);
 
-    const monthsPassed = useMemo(() => {
-      const yearFilter = selectedYear === 'All Years' ? undefined : parseInt(selectedYear, 10);
-      const months = new Set(
-        actualData
-          .filter(t => (yearFilter ? t.year === yearFilter : true))
-          .map(t => t.yearMonth)
-          .filter(Boolean)
-      );
-      return months.size || 1;
-    }, [actualData, selectedYear]);
-
     const varianceResult = useMemo(() => {
       try {
-        return buildVarianceRecords(actualData, budgetData, selectedYear === 'All Years' ? undefined : parseInt(selectedYear, 10));
+        return buildVarianceRecords(
+          actualData,
+          budgetData,
+          selectedYears,
+          periodView,
+          selectedQuarters,
+          selectedHalves,
+          selectedMonths
+        );
       } catch (e) {
         console.error("varianceResult error:", e);
         return {
@@ -734,175 +780,78 @@
           }
         };
       }
-    }, [actualData, budgetData, selectedYear]);
+    }, [actualData, budgetData, selectedYears, periodView, selectedQuarters, selectedHalves, selectedMonths]);
 
     const varianceData = varianceResult.varianceRecords;
 
     const filteredBudgetData = useMemo(() => {
       try {
+        const getPeriodMonths = () => {
+          if (periodView === 'quarterly') {
+            const quarterMonths = {
+              Q1: ['01', '02', '03'],
+              Q2: ['04', '05', '06'],
+              Q3: ['07', '08', '09'],
+              Q4: ['10', '11', '12'],
+            };
+            if (selectedQuarters.length === 0) return ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12'];
+            return selectedQuarters.flatMap(q => quarterMonths[q]);
+          }
+          if (periodView === 'halfYearly') {
+            const halfMonths = {
+              H1: ['01', '02', '03', '04', '05', '06'],
+              H2: ['07', '08', '09', '10', '11', '12'],
+            };
+            if (selectedHalves.length === 0) return ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12'];
+            return selectedHalves.flatMap(h => halfMonths[h]);
+          }
+          if (periodView === 'fullYear') {
+            return ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12'];
+          }
+          return null;
+        };
+        const periodMonths = getPeriodMonths();
+
         return budgetData.filter(Boolean).filter(row => {
           const rowYear = String(row.year);
-          if (selectedYear !== 'All Years' && rowYear !== selectedYear) return false;
+          if (selectedYears.length > 0 && !selectedYears.includes(rowYear)) return false;
+
+          const ym = String(row.yearMonth || "");
+          const month = ym.includes("/") ? ym.split("/")[1] : ym.split("-")[1];
+          
+          if (periodView === 'monthly') {
+            if (selectedMonths.length > 0 && !selectedMonths.includes(month)) return false;
+          } else if (periodMonths) {
+            if (!periodMonths.includes(month)) return false;
+          }
+
+          const searchTerm = filters.search.trim().toLowerCase();
+          if (searchTerm) {
+            const searchFields = [
+              row.region, row.country, row.station, row.category, row.itCategory,
+              row.budgetCategory, row.budgetItem, row.item
+            ].map(v => String(v || '').toLowerCase());
+            
+            if (!searchFields.some(f => f.includes(searchTerm))) return false;
+          }
 
           return (
             (filters.region.length === 0 || filters.region.includes(row.region)) &&
-            (filters.country.length === 0 || filters.country.includes(row.station as string)) &&
-            (filters.station.length === 0 || filters.station.includes(row.station as string)) &&
+            (filters.country.length === 0 || filters.country.includes(String(row.country || ''))) &&
+            (filters.station.length === 0 || filters.station.includes(String(row.station || ''))) &&
             (filters.category.length === 0 || filters.category.includes(row.category)) &&
-            (filters.itCategory.length === 0 || filters.itCategory.includes(row.itCategory)) &&
+            (filters.itCategory.length === 0 || filters.itCategory.includes(row.itCategory || '')) &&
             (filters.budgetCategory.length === 0 || filters.budgetCategory.includes(row.budgetCategory || '')) &&
             (filters.budgetItem.length === 0 || filters.budgetItem.includes(row.budgetItem || '')) &&
             (filters.budgetType.length === 0 || filters.budgetType.includes(String(row.type || ''))) &&
-            (filters.yearMonth.length === 0 || filters.yearMonth.includes(row.yearMonth))
+            (filters.yearMonth.length === 0 || filters.yearMonth.includes(row.yearMonth || ''))
           );
         });
       } catch (e) {
         console.error("filteredBudgetData error:", e);
         return [];
       }
-    }, [budgetData, filters, selectedYear]);
-
-    const filteredVarianceData = useMemo(() => {
-      return varianceData.filter(v => {
-        if (filters.region.length > 0 && !filters.region.includes(v.region)) return false;
-        if (filters.country.length > 0 && !filters.country.includes(v.station as string)) return false;
-        if (filters.station.length > 0 && !filters.station.includes(v.station as string)) return false;
-        if (filters.category.length > 0 && !filters.category.includes(v.category)) return false;
-        if (filters.itCategory.length > 0 && !filters.itCategory.includes(v.itCategory)) return false;
-        if (filters.budgetCategory.length > 0 && !filters.budgetCategory.includes(v.budgetCategory || '')) return false;
-        if (filters.budgetItem.length > 0 && !filters.budgetItem.includes(v.budgetItem || '')) return false;
-        if (filters.budgetType.length > 0 && !filters.budgetType.includes(v.type)) return false;
-        if (filters.yearMonth.length > 0 && !filters.yearMonth.includes(v.yearMonth)) return false;
-        return true;
-      });
-    }, [varianceData, filters]);
-
-    const varianceAnalysis = useMemo(() => {
-      try {
-        // Use the already filtered variance data
-        const filtered = filteredVarianceData;
-
-        const totalBudget = filtered.reduce((sum, v) => sum + v.budgetUsd, 0);
-        const totalActual = filtered.reduce((sum, v) => sum + v.actualUsd, 0);
-        const totalVariance = totalActual - totalBudget;
-        const variancePct = totalBudget !== 0 ? (totalVariance / totalBudget) * 100 : 0;
-
-        const runRate = totalActual / monthsPassed;
-        const forecastYearEnd = runRate * 12;
-        const overspendRisk = forecastYearEnd - totalBudget;
-        const budgetUsedPercent = totalBudget !== 0 ? (totalActual / totalBudget) * 100 : 0;
-
-        // Charts data
-        const byRegion: Record<string, { name: string, budget: number, actual: number }> = {};
-        const byStation: Record<string, { name: string, budget: number, actual: number }> = {};
-        const byItCategory: Record<string, { name: string, budget: number, actual: number }> = {};
-        const byMonth: Record<string, { name: string, budget: number, actual: number, variance: number }> = {};
-
-        filtered.forEach(v => {
-          // By Region
-          if (!byRegion[v.region]) byRegion[v.region] = { name: v.region, budget: 0, actual: 0 };
-          byRegion[v.region].budget += v.budgetUsd;
-          byRegion[v.region].actual += v.actualUsd;
-
-          // By Station
-          if (!byStation[v.station as string]) byStation[v.station as string] = { name: v.station as string, budget: 0, actual: 0 };
-          byStation[v.station as string].budget += v.budgetUsd;
-          byStation[v.station as string].actual += v.actualUsd;
-
-          // By IT Category
-          if (!byItCategory[v.itCategory]) byItCategory[v.itCategory] = { name: v.itCategory, budget: 0, actual: 0 };
-          byItCategory[v.itCategory].budget += v.budgetUsd;
-          byItCategory[v.itCategory].actual += v.actualUsd;
-
-          // By Month
-          if (!byMonth[v.yearMonth]) byMonth[v.yearMonth] = { name: v.yearMonth, budget: 0, actual: 0, variance: 0 };
-          byMonth[v.yearMonth].budget += v.budgetUsd;
-          byMonth[v.yearMonth].actual += v.actualUsd;
-          byMonth[v.yearMonth].variance += v.variance;
-        });
-
-        // Tables data
-        const overBudget = Object.values(byItCategory)
-          .map(c => ({ ...c, variance: c.actual - c.budget, variancePct: c.budget !== 0 ? ((c.actual - c.budget) / c.budget) * 100 : 0 }))
-          .filter(c => c.variance > 0)
-          .sort((a, b) => b.variance - a.variance);
-
-        const underBudget = Object.values(byItCategory)
-          .map(c => ({ ...c, variance: c.actual - c.budget, variancePct: c.budget !== 0 ? ((c.actual - c.budget) / c.budget) * 100 : 0 }))
-          .filter(c => c.variance < 0)
-          .sort((a, b) => a.variance - b.variance);
-
-        // Region then Station breakdown
-        const hierarchy: { region: string, station: string, budget: number, actual: number, variance: number, variancePct: number | null, forecast: number, risk: number }[] = [];
-        const hierarchyMap = new Map<string, { budget: number, actual: number }>();
-        
-        filtered.forEach(v => {
-          const key = `${v.region}|${v.station}`;
-          const current = hierarchyMap.get(key) || { budget: 0, actual: 0 };
-          hierarchyMap.set(key, {
-            budget: current.budget + v.budgetUsd,
-            actual: current.actual + v.actualUsd
-          });
-        });
-
-        hierarchyMap.forEach((stats, key) => {
-          const [region, station] = key.split('|');
-          const variance = stats.actual - stats.budget;
-          const runRate = stats.actual / monthsPassed;
-          const forecast = runRate * 12;
-          const risk = forecast - stats.budget;
-
-          hierarchy.push({
-            region,
-            station,
-            budget: stats.budget,
-            actual: stats.actual,
-            variance,
-            variancePct: stats.budget !== 0 ? (variance / stats.budget) * 100 : null,
-            forecast,
-            risk
-          });
-        });
-
-        hierarchy.sort((a, b) => (a.region || '').localeCompare(b.region || '') || (a.station || '').localeCompare(b.station || ''));
-
-        return {
-          totalBudget,
-          totalActual,
-          totalVariance,
-          variancePct,
-          runRate,
-          forecastYearEnd,
-          overspendRisk,
-          budgetUsedPercent,
-          charts: {
-            region: Object.values(byRegion).sort((a, b) => b.actual - a.actual),
-            station: Object.values(byStation).sort((a, b) => b.actual - a.actual).slice(0, 10),
-            itCategory: Object.values(byItCategory).sort((a, b) => b.actual - a.actual).slice(0, 10),
-            month: Object.values(byMonth).sort((a, b) => (a.name || '').localeCompare(b.name || ''))
-          },
-          tables: {
-            overBudget,
-            underBudget,
-            hierarchy
-          }
-        };
-      } catch (e) {
-        console.error("varianceAnalysis error:", e);
-        return {
-          totalBudget: 0,
-          totalActual: 0,
-          totalVariance: 0,
-          variancePct: 0,
-          runRate: 0,
-          forecastYearEnd: 0,
-          overspendRisk: 0,
-          budgetUsedPercent: 0,
-          charts: { region: [], station: [], itCategory: [], month: [] },
-          tables: { overBudget: [], underBudget: [], hierarchy: [] }
-        };
-      }
-    }, [filteredVarianceData, monthsPassed]);
+    }, [budgetData, filters, selectedYears, periodView, selectedQuarters, selectedHalves, selectedMonths]);
 
     const mapRawToBudgetRecords = useCallback((rawData: any[], fileName: string): BudgetRecord[] => {
       return rawData.map((row) => {
@@ -1200,19 +1149,46 @@
     };
 
     const filteredData = useMemo(() => {
-      if (actualData.length > 0) {
-        console.log("Sample regions:", actualData.slice(0, 20).map(r => ({
-          supplier: r.supplier,
-          region: r.region,
-          country: r.country,
-          businessArea: r.businessArea
-        })));
-      }
+      const getPeriodMonths = () => {
+        if (periodView === 'quarterly') {
+          const quarterMonths = {
+            Q1: ['01', '02', '03'],
+            Q2: ['04', '05', '06'],
+            Q3: ['07', '08', '09'],
+            Q4: ['10', '11', '12'],
+          };
+          if (selectedQuarters.length === 0) return ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12'];
+          return selectedQuarters.flatMap(q => quarterMonths[q]);
+        }
+        if (periodView === 'halfYearly') {
+          const halfMonths = {
+            H1: ['01', '02', '03', '04', '05', '06'],
+            H2: ['07', '08', '09', '10', '11', '12'],
+          };
+          if (selectedHalves.length === 0) return ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12'];
+          return selectedHalves.flatMap(h => halfMonths[h]);
+        }
+        if (periodView === 'fullYear') {
+          return ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12'];
+        }
+        return null;
+      };
+      const periodMonths = getPeriodMonths();
+
       const searchTerm = filters.search.trim().toLowerCase();
 
       return actualData.filter(row => {
         const rowYear = String(row.year || row.fiscalYear || '');
-        if (selectedYear !== 'All Years' && rowYear !== selectedYear) return false;
+        if (selectedYears.length > 0 && !selectedYears.includes(rowYear)) return false;
+
+        const ym = String(row.yearMonth || "");
+        const month = ym.includes("/") ? ym.split("/")[1] : ym.split("-")[1];
+        
+        if (periodView === 'monthly') {
+          if (selectedMonths.length > 0 && !selectedMonths.includes(month)) return false;
+        } else if (periodMonths) {
+          if (!periodMonths.includes(month)) return false;
+        }
 
         const supplier = String(row.supplier || '').toLowerCase();
         const text = String(row.text || '').toLowerCase();
@@ -1226,7 +1202,7 @@
           (filters.yearMonth.length === 0 || filters.yearMonth.includes(String(row.yearMonth || ''))) &&
           (filters.region.length === 0 || filters.region.includes(String(row.region || ''))) &&
           (filters.country.length === 0 || filters.country.includes(String(row.country || ''))) &&
-          (filters.station.length === 0 || filters.station.includes(String(row.businessArea || ''))) &&
+          (filters.station.length === 0 || filters.station.includes(String(row.businessArea || row.station || ''))) &&
           (filters.supplier.length === 0 || filters.supplier.includes(String(row.supplier || ''))) &&
           (filters.category.length === 0 || filters.category.includes(String(row.category || ''))) &&
           (filters.itCategory.length === 0 || filters.itCategory.includes(String(row.itCategory || ''))) &&
@@ -1237,16 +1213,281 @@
           (filters.glAccount.length === 0 || filters.glAccount.includes(String(row.glAccount || ''))) &&
           (
             !searchTerm ||
-            supplier.includes(searchTerm) ||
-            text.includes(searchTerm) ||
-            glName.includes(searchTerm) ||
-            companyCode.includes(searchTerm) ||
-            documentNumber.includes(searchTerm) ||
-            userName.includes(searchTerm)
+            [
+              row.supplier, row.text, row.glName, row.companyCode, row.documentNumber, row.userName,
+              row.region, row.country, row.businessArea, row.station, row.category, row.itCategory,
+              row.budgetCategory, row.budgetItem
+            ].some(v => String(v || '').toLowerCase().includes(searchTerm))
           )
         );
       });
-    }, [actualData, filters, selectedYear]);
+    }, [actualData, filters, selectedYears, periodView, selectedQuarters, selectedHalves, selectedMonths]);
+
+    const monthsInScope = useMemo(() => {
+      if (periodView === 'quarterly') {
+        if (selectedQuarters.length === 0) return ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12'];
+        return selectedQuarters.flatMap(q => getQuarterMonths(q));
+      }
+
+      if (periodView === 'halfYearly') {
+        if (selectedHalves.length === 0) return ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12'];
+        return selectedHalves.flatMap(h => getHalfYearMonths(h));
+      }
+
+      if (periodView === 'fullYear') {
+        return ['01','02','03','04','05','06','07','08','09','10','11','12'];
+      }
+
+      if (periodView === 'monthly') {
+        const selectedMonthsFromFilters = (filters.yearMonth || [])
+          .map(v => getMonthPart(v))
+          .filter(Boolean);
+
+        if (selectedMonthsFromFilters.length > 0) {
+          return Array.from(new Set(selectedMonthsFromFilters));
+        }
+        if (selectedMonths.length > 0) return selectedMonths;
+        return ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12'];
+      }
+
+      const selectedMonthsFromData = (filters.yearMonth || [])
+        .map(v => getMonthPart(v))
+        .filter(Boolean);
+
+      if (selectedMonthsFromData.length > 0) {
+        return Array.from(new Set(selectedMonthsFromData));
+      }
+
+      const monthsFromActual = Array.from(
+        new Set(
+          filteredData
+            .map(row => getMonthPart(row.yearMonth))
+            .filter(Boolean)
+        )
+      );
+
+      return monthsFromActual.length > 0 ? monthsFromActual : ['01'];
+    }, [periodView, selectedQuarters, selectedHalves, selectedMonths, filters.yearMonth, filteredData]);
+
+    const filteredVarianceData = useMemo(() => {
+      const searchTerm = filters.search.trim().toLowerCase();
+
+      return varianceData.filter(v => {
+        const rowYear = String(v.year || '');
+
+        if (selectedYears.length > 0 && !selectedYears.includes(rowYear)) return false;
+        if (filters.fiscalYear.length > 0 && !filters.fiscalYear.includes(String(v.year || ''))) return false;
+        if (filters.region.length > 0 && !filters.region.includes(String(v.region || ''))) return false;
+        if (filters.country.length > 0 && !filters.country.includes(String(v.country || ''))) return false;
+        if (filters.station.length > 0 && !filters.station.includes(String(v.station || ''))) return false;
+        if (filters.category.length > 0 && !filters.category.includes(String(v.category || ''))) return false;
+        if (filters.itCategory.length > 0 && !filters.itCategory.includes(String(v.itCategory || ''))) return false;
+        if (filters.budgetCategory.length > 0 && !filters.budgetCategory.includes(String(v.budgetCategory || ''))) return false;
+        if (filters.budgetItem.length > 0 && !filters.budgetItem.includes(String(v.budgetItem || ''))) return false;
+        if (filters.budgetType.length > 0 && !filters.budgetType.includes(String(v.type || ''))) return false;
+        if (filters.yearMonth.length > 0 && !filters.yearMonth.includes(String(v.yearMonth || ''))) return false;
+
+        if (searchTerm) {
+          const searchFields = [
+            v.region, v.country, v.station, v.category, v.itCategory,
+            v.budgetCategory, v.budgetItem
+          ].map(val => String(val || '').toLowerCase());
+          
+          if (!searchFields.some(f => f.includes(searchTerm))) return false;
+        }
+
+        return true;
+      });
+    }, [varianceData, filters, selectedYears]);
+
+    const varianceAnalysis = useMemo(() => {
+      try {
+        const periodFilteredActual = filteredData.filter(row => {
+          const month = getMonthPart(row.yearMonth);
+          return monthsInScope.includes(month);
+        });
+
+        const periodFilteredBudget = filteredBudgetData;
+
+        const fullYearBudgetData = budgetData.filter(Boolean).filter(row => {
+          const rowYear = String(row.year);
+          return selectedYears.length === 0 || selectedYears.includes(rowYear);
+        });
+
+        const totalAnnualBudget = fullYearBudgetData.reduce((sum, row) => sum + (row.budget || 0), 0);
+        const totalActual = periodFilteredActual.reduce((sum, row) => sum + (row.usd || 0), 0);
+
+        const totalBudget = (totalAnnualBudget / 12) * monthsInScope.length;
+        const totalVariance = totalActual - totalBudget;
+        const variancePct = totalBudget !== 0 ? (totalVariance / totalBudget) * 100 : 0;
+        const budgetUsedPercent = totalBudget !== 0 ? (totalActual / totalBudget) * 100 : 0;
+
+        const runRate = monthsInScope.length > 0 ? totalActual / monthsInScope.length : 0;
+        const forecastYearEnd = runRate * 12;
+
+        const overspendRisk = Math.max(forecastYearEnd - totalAnnualBudget, 0);
+        const remainingAnnualBudget = Math.max(totalAnnualBudget - forecastYearEnd, 0);
+
+        const byRegion: Record<string, { name: string; budget: number; actual: number }> = {};
+        const byStation: Record<string, { name: string; budget: number; actual: number }> = {};
+        const byItCategory: Record<string, { name: string; budget: number; actual: number }> = {};
+        const byMonth: Record<string, { name: string; budget: number; actual: number; variance: number }> = {};
+
+        periodFilteredActual.forEach(row => {
+          const region = row.region || 'Unknown';
+          const station = row.businessArea || row.station || row.country || 'Unknown';
+          const itCategory = row.itCategory || row.category || 'Uncategorized';
+          const ym = row.yearMonth || 'Unknown';
+
+          if (!byRegion[region]) byRegion[region] = { name: region, budget: 0, actual: 0 };
+          if (!byStation[station]) byStation[station] = { name: station, budget: 0, actual: 0 };
+          if (!byItCategory[itCategory]) byItCategory[itCategory] = { name: itCategory, budget: 0, actual: 0 };
+          if (!byMonth[ym]) byMonth[ym] = { name: ym, budget: 0, actual: 0, variance: 0 };
+
+          byRegion[region].actual += row.usd || 0;
+          byStation[station].actual += row.usd || 0;
+          byItCategory[itCategory].actual += row.usd || 0;
+          byMonth[ym].actual += row.usd || 0;
+        });
+
+        periodFilteredBudget.forEach(row => {
+          const region = row.region || 'Unknown';
+          const station = row.station || row.country || 'Unknown';
+          const itCategory = row.itCategory || row.item || row.category || 'Uncategorized';
+
+          const monthlyBudget = (row.budget || 0) / 12;
+          const periodBudget = monthlyBudget * monthsInScope.length;
+
+          if (!byRegion[region]) byRegion[region] = { name: region, budget: 0, actual: 0 };
+          if (!byStation[station]) byStation[station] = { name: station, budget: 0, actual: 0 };
+          if (!byItCategory[itCategory]) byItCategory[itCategory] = { name: itCategory, budget: 0, actual: 0 };
+
+          byRegion[region].budget += periodBudget;
+          byStation[station].budget += periodBudget;
+          byItCategory[itCategory].budget += periodBudget;
+
+          monthsInScope.forEach(month => {
+            const year = selectedYears.length > 0 ? selectedYears[0] : String(new Date().getFullYear());
+            const ym = `${year}/${month}`;
+
+            if (!byMonth[ym]) byMonth[ym] = { name: ym, budget: 0, actual: 0, variance: 0 };
+            byMonth[ym].budget += monthlyBudget;
+          });
+        });
+
+        Object.values(byMonth).forEach(m => {
+          m.variance = m.actual - m.budget;
+        });
+
+        const overBudget = Object.values(byItCategory)
+          .map(c => ({
+            ...c,
+            variance: c.actual - c.budget,
+            variancePct: c.budget !== 0 ? ((c.actual - c.budget) / c.budget) * 100 : 0
+          }))
+          .filter(c => c.variance > 0)
+          .sort((a, b) => b.variance - a.variance);
+
+        const underBudget = Object.values(byItCategory)
+          .map(c => ({
+            ...c,
+            variance: c.actual - c.budget,
+            variancePct: c.budget !== 0 ? ((c.actual - c.budget) / c.budget) * 100 : 0
+          }))
+          .filter(c => c.variance < 0)
+          .sort((a, b) => a.variance - b.variance);
+
+        const hierarchyMap = new Map<string, { budget: number; actual: number }>();
+
+        Object.values(byRegion).forEach(regionRow => {
+          // placeholder to keep structure stable
+        });
+
+        periodFilteredActual.forEach(row => {
+          const region = row.region || 'Unknown';
+          const station = row.businessArea || row.station || row.country || 'Unknown';
+          const key = `${region}|${station}`;
+          const curr = hierarchyMap.get(key) || { budget: 0, actual: 0 };
+          curr.actual += row.usd || 0;
+          hierarchyMap.set(key, curr);
+        });
+
+        periodFilteredBudget.forEach(row => {
+          const region = row.region || 'Unknown';
+          const station = row.station || row.country || 'Unknown';
+          const key = `${region}|${station}`;
+          const curr = hierarchyMap.get(key) || { budget: 0, actual: 0 };
+          curr.budget += ((row.budget || 0) / 12) * monthsInScope.length;
+          hierarchyMap.set(key, curr);
+        });
+
+        const hierarchy = Array.from(hierarchyMap.entries()).map(([key, stats]) => {
+          const [region, station] = key.split('|');
+          const variance = stats.actual - stats.budget;
+          const localRunRate = monthsInScope.length > 0 ? stats.actual / monthsInScope.length : 0;
+          const forecast = localRunRate * 12;
+          const risk = Math.max(forecast - (stats.budget / Math.max(monthsInScope.length, 1)) * 12, 0);
+
+          return {
+            region,
+            station,
+            budget: stats.budget,
+            actual: stats.actual,
+            variance,
+            variancePct: stats.budget !== 0 ? (variance / stats.budget) * 100 : null,
+            forecast,
+            risk
+          };
+        });
+
+        hierarchy.sort((a, b) => (a.region || '').localeCompare(b.region || '') || (a.station || '').localeCompare(b.station || ''));
+
+        return {
+          totalBudget,
+          totalActual,
+          totalVariance,
+          variancePct,
+          runRate,
+          forecastYearEnd,
+          overspendRisk,
+          remainingAnnualBudget,
+          budgetUsedPercent,
+          charts: {
+            region: Object.values(byRegion).sort((a, b) => b.actual - a.actual),
+            station: Object.values(byStation).sort((a, b) => b.actual - a.actual).slice(0, 10),
+            itCategory: Object.values(byItCategory).sort((a, b) => b.actual - a.actual).slice(0, 10),
+            month: Object.values(byMonth).sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+          },
+          tables: {
+            overBudget,
+            underBudget,
+            hierarchy
+          }
+        };
+      } catch (e) {
+        console.error("varianceAnalysis error:", e);
+        return {
+          totalBudget: 0,
+          totalActual: 0,
+          totalVariance: 0,
+          variancePct: 0,
+          runRate: 0,
+          forecastYearEnd: 0,
+          overspendRisk: 0,
+          remainingAnnualBudget: 0,
+          budgetUsedPercent: 0,
+          charts: { region: [], station: [], itCategory: [], month: [] },
+          tables: { overBudget: [], underBudget: [], hierarchy: [] }
+        };
+      }
+    }, [filteredData, filteredBudgetData, monthsInScope, selectedYears]);
+
+    const activePeriodLabel = useMemo(() => {
+      if (periodView === 'quarterly') return `${selectedQuarters.length > 0 ? selectedQuarters.join(', ') : 'All Quarters'} View`;
+      if (periodView === 'halfYearly') return `${selectedHalves.length > 0 ? selectedHalves.join(', ') : 'All Halves'} View`;
+      if (periodView === 'fullYear') return 'Full-Year View';
+      return `${selectedMonths.length > 0 ? selectedMonths.length + ' Months' : 'Monthly'} View`;
+    }, [periodView, selectedQuarters, selectedHalves, selectedMonths]);
 
     const vendorGovernanceData = useMemo<VendorGovernanceRow[]>(() => {
       return filteredData
@@ -2705,17 +2946,53 @@
 
             <div className="flex items-center gap-3">
               <select
-                value={selectedYear}
-                onChange={(e) => setSelectedYear(e.target.value)}
+                value={periodView}
+                onChange={(e) => setPeriodView(e.target.value as any)}
                 className="px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-rose-500/20"
               >
-                <option value="All Years">All Years</option>
-                {uniqueValues.years.map((year) => (
-                  <option key={year} value={year}>
-                    {year}
-                  </option>
-                ))}
+                <option value="monthly">Monthly</option>
+                <option value="quarterly">Quarterly</option>
+                <option value="halfYearly">Half Yearly</option>
+                <option value="fullYear">Full Year</option>
               </select>
+
+              {periodView === 'monthly' && (
+                <MultiSelectCheckbox
+                  label="Month"
+                  options={['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12']}
+                  selected={selectedMonths}
+                  onChange={setSelectedMonths}
+                  className="w-48"
+                />
+              )}
+
+              {periodView === 'quarterly' && (
+                <MultiSelectCheckbox
+                  label="Quarter"
+                  options={['Q1', 'Q2', 'Q3', 'Q4']}
+                  selected={selectedQuarters}
+                  onChange={setSelectedQuarters as any}
+                  className="w-48"
+                />
+              )}
+
+              {periodView === 'halfYearly' && (
+                <MultiSelectCheckbox
+                  label="Half"
+                  options={['H1', 'H2']}
+                  selected={selectedHalves}
+                  onChange={setSelectedHalves as any}
+                  className="w-48"
+                />
+              )}
+
+              <MultiSelectCheckbox
+                label="Year"
+                options={uniqueValues.years}
+                selected={selectedYears}
+                onChange={setSelectedYears}
+                className="w-48"
+              />
               <button 
                 onClick={() => setShowClearAllModal(true)}
                 className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-colors"
@@ -2846,6 +3123,7 @@
                 Reset All
               </button>
             </div>
+
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
               <div className="space-y-1.5">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Search</label>
@@ -3472,7 +3750,7 @@
           {activeTab === 'variance' && (
             <div className="space-y-8">
               {/* Summary Cards */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {[
                   { label: 'Total Budget', value: varianceAnalysis.totalBudget, icon: Wallet, color: 'text-rose-600', bg: 'bg-rose-50' },
                   { label: 'Total Actual', value: varianceAnalysis.totalActual, icon: DollarSign, color: 'text-slate-900', bg: 'bg-slate-50' },
@@ -3481,6 +3759,7 @@
                   { label: 'Monthly Run Rate', value: varianceAnalysis.runRate, icon: Activity, color: 'text-slate-900', bg: 'bg-slate-50' },
                   { label: 'Forecast Year-End', value: varianceAnalysis.forecastYearEnd, icon: TrendingUp, color: 'text-slate-900', bg: 'bg-slate-50' },
                   { label: 'Overspend Risk', value: varianceAnalysis.overspendRisk, icon: AlertTriangle, color: varianceAnalysis.overspendRisk > 0 ? 'text-rose-600' : 'text-emerald-600', bg: varianceAnalysis.overspendRisk > 0 ? 'bg-rose-50' : 'bg-emerald-50' },
+                  { label: 'Remaining Annual Budget', value: varianceAnalysis.remainingAnnualBudget, icon: Wallet, color: 'text-emerald-600', bg: 'bg-emerald-50' },
                   { label: 'Variance %', value: varianceAnalysis.variancePct, icon: Activity, color: varianceAnalysis.variancePct > 0 ? 'text-rose-600' : 'text-emerald-600', bg: varianceAnalysis.variancePct > 0 ? 'bg-rose-50' : 'bg-emerald-50', isPct: true }
                 ].map((stat, i) => (
                   <motion.div
@@ -3496,6 +3775,9 @@
                       </div>
                       <div>
                         <p className="text-sm font-medium text-slate-500">{stat.label}</p>
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter mb-1">
+                          {activePeriodLabel}
+                        </p>
                         <h3 className={clsx("text-2xl font-bold", stat.color)}>
                           {stat.isPct ? `${stat.value.toFixed(1)}%` : formatCurrency(stat.value)}
                         </h3>
@@ -4868,7 +5150,10 @@
                       setBudgetData([]);
                       setLastAnalysisResult(null);
                       setChatMessages([]);
-                      setSelectedYear('All Years');
+                      setSelectedYears([]);
+                      setSelectedQuarters([]);
+                      setSelectedHalves([]);
+                      setSelectedMonths([]);
                       setActiveTab('dashboard');
                       setMomThreshold(35);
                       setFilters({

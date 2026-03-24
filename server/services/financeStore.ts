@@ -1,6 +1,5 @@
 import fs from "fs";
 import path from "path";
-import { ExcelSyncPayload } from "../../src/types";
 
 const DATA_FILE = path.join(process.cwd(), "server/data/latest-finance-data.json");
 

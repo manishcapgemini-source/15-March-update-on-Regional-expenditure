@@ -4,8 +4,11 @@ type VarianceKeyParts = {
   year: number;
   region: string;
   station: string;
-  category: string;
-  itCategory: string;
+  country?: string;
+  category: string;        // real category
+  itCategory: string;      // real IT category
+  budgetCategory: string;  // matched budget category
+  budgetItem: string;      // matched budget item
   yearMonth: string;
   type: ExpenditureType;
 };
@@ -34,22 +37,11 @@ function buildVarianceKey(parts: VarianceKeyParts): string {
     parts.year,
     normalizeKeyPart(parts.region),
     normalizeKeyPart(parts.station),
-    normalizeKeyPart(parts.category),
-    normalizeKeyPart(parts.itCategory),
+    normalizeKeyPart(parts.budgetCategory),
+    normalizeKeyPart(parts.budgetItem),
     normalizeKeyPart(parts.yearMonth),
     normalizeKeyPart(parts.type)
   ].join("|");
-}
-
-function getMonthsPassed(actualData: FinancialTransaction[], selectedYear?: number): number {
-  const months = new Set(
-    actualData
-      .filter((t) => (selectedYear ? t.year === selectedYear : true))
-      .map((t) => t.yearMonth)
-      .filter(Boolean)
-  );
-
-  return months.size || 1;
 }
 
 export type VarianceEngineResult = {
@@ -76,30 +68,81 @@ function normalizeMatchValue(value: unknown): string {
 export function buildVarianceRecords(
   actualData: FinancialTransaction[],
   budgetData: BudgetRecord[],
-  selectedYear?: number
+  selectedYears: string[] = [],
+  periodView: 'monthly' | 'quarterly' | 'halfYearly' | 'fullYear' = 'fullYear',
+  selectedQuarters: ('Q1' | 'Q2' | 'Q3' | 'Q4')[] = [],
+  selectedHalves: ('H1' | 'H2')[] = [],
+  selectedMonths: string[] = []
 ): VarianceEngineResult {
   const actualsMap = new Map<string, number>();
   const budgetsMap = new Map<string, number>();
   const keyMeta = new Map<string, VarianceKeyParts>();
 
-  const filteredActuals = selectedYear
-    ? actualData.filter((t) => t.year === selectedYear)
+  const getPeriodMonths = () => {
+    if (periodView === 'monthly') {
+      return selectedMonths.length > 0 ? selectedMonths : ['01'];
+    }
+    if (periodView === 'quarterly') {
+      const quarterMonths = {
+        Q1: ['01', '02', '03'],
+        Q2: ['04', '05', '06'],
+        Q3: ['07', '08', '09'],
+        Q4: ['10', '11', '12'],
+      };
+      if (selectedQuarters.length === 0) return ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12'];
+      return selectedQuarters.flatMap(q => quarterMonths[q]);
+    }
+    if (periodView === 'halfYearly') {
+      const halfMonths = {
+        H1: ['01', '02', '03', '04', '05', '06'],
+        H2: ['07', '08', '09', '10', '11', '12'],
+      };
+      if (selectedHalves.length === 0) return ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12'];
+      return selectedHalves.flatMap(h => halfMonths[h]);
+    }
+    return null;
+  };
+
+  const periodMonths = getPeriodMonths();
+
+  const filterByPeriod = (records: any[]) => {
+    if (!periodMonths) return records;
+    return records.filter((r) => {
+      const ym = String(r.yearMonth || "");
+      const month = ym.includes("/") ? ym.split("/")[1] : ym.split("-")[1];
+      return periodMonths.includes(month);
+    });
+  };
+
+  let filteredActuals = selectedYears.length > 0
+    ? actualData.filter((t) => selectedYears.includes(String(t.year)))
     : actualData;
 
-  const filteredBudgets = selectedYear
-    ? budgetData.filter((b) => b.year === selectedYear)
+  let filteredBudgets = selectedYears.length > 0
+    ? budgetData.filter((b) => selectedYears.includes(String(b.year)))
     : budgetData;
 
+  filteredActuals = filterByPeriod(filteredActuals);
+  filteredBudgets = filterByPeriod(filteredBudgets);
+
   for (const tx of filteredActuals) {
-    const matchedCategory = tx.budgetCategory ? normalizeMatchValue(tx.budgetCategory) : normalizeText(tx.category || "Uncategorized");
-    const matchedItem = tx.budgetItem ? normalizeMatchValue(tx.budgetItem) : normalizeText(tx.itCategory || tx.category || "Uncategorized");
+    const matchedCategory = tx.budgetCategory
+      ? normalizeMatchValue(tx.budgetCategory)
+      : normalizeMatchValue(tx.category || "Uncategorized");
+
+    const matchedItem = tx.budgetItem
+      ? normalizeMatchValue(tx.budgetItem)
+      : normalizeMatchValue(tx.itCategory || tx.category || "Uncategorized");
 
     const keyParts: VarianceKeyParts = {
       year: tx.year,
       region: normalizeText(tx.region),
       station: normalizeStation(tx.businessArea || tx.station || tx.country || "UNKNOWN"),
-      category: matchedCategory,
-      itCategory: matchedItem,
+      country: normalizeText(tx.country),
+      category: normalizeText(tx.category || "Uncategorized"),
+      itCategory: normalizeText(tx.itCategory || tx.category || "Uncategorized"),
+      budgetCategory: matchedCategory,
+      budgetItem: matchedItem,
       yearMonth: normalizeText(tx.yearMonth || `${tx.year}/01`),
       type: normalizeType(tx.expenditureType || tx.category)
     };
@@ -110,15 +153,23 @@ export function buildVarianceRecords(
   }
 
   for (const budget of filteredBudgets) {
-    const matchedCategory = normalizeMatchValue(budget.category || "Uncategorized");
-    const matchedItem = normalizeMatchValue(budget.item || budget.category || "Uncategorized");
+    const matchedCategory = normalizeMatchValue(
+      budget.budgetCategory || budget.category || "Uncategorized"
+    );
+
+    const matchedItem = normalizeMatchValue(
+      budget.budgetItem || budget.item || budget.itCategory || budget.category || "Uncategorized"
+    );
 
     const keyParts: VarianceKeyParts = {
       year: budget.year,
       region: normalizeText(budget.region),
       station: normalizeStation(budget.station),
-      category: matchedCategory,
-      itCategory: matchedItem,
+      country: normalizeText(budget.country || ""),
+      category: normalizeText(budget.category || "Uncategorized"),
+      itCategory: normalizeText(budget.itCategory || budget.category || "Uncategorized"),
+      budgetCategory: matchedCategory,
+      budgetItem: matchedItem,
       yearMonth: normalizeText(budget.yearMonth || `${budget.year}/01`),
       type: normalizeType(budget.type)
     };
@@ -129,7 +180,15 @@ export function buildVarianceRecords(
   }
 
   const allKeys = new Set([...actualsMap.keys(), ...budgetsMap.keys()]);
-  const monthsPassed = getMonthsPassed(filteredActuals, selectedYear);
+  
+  const getMonthsInScopeCount = () => {
+    if (periodView === 'monthly') return 1;
+    if (periodView === 'quarterly') return 3;
+    if (periodView === 'halfYearly') return 6;
+    if (periodView === 'fullYear') return 12;
+    return 1;
+  };
+  const monthsInScopeCount = getMonthsInScopeCount();
 
   const varianceRecords: VarianceRecord[] = Array.from(allKeys).map((key) => {
     const meta = keyMeta.get(key)!;
@@ -140,7 +199,7 @@ export function buildVarianceRecords(
     const variancePct = budgetUsd !== 0 ? (variance / budgetUsd) * 100 : null;
     const budgetUsedPercent = budgetUsd !== 0 ? (actualUsd / budgetUsd) * 100 : null;
 
-    const runRate = actualUsd / monthsPassed;
+    const runRate = actualUsd / monthsInScopeCount;
     const forecastYearEnd = runRate * 12;
     const overspendRisk = forecastYearEnd - budgetUsd;
 
@@ -149,8 +208,11 @@ export function buildVarianceRecords(
       year: meta.year,
       region: meta.region,
       station: meta.station,
+      country: meta.country || "",
       category: meta.category,
       itCategory: meta.itCategory,
+      budgetCategory: meta.budgetCategory,
+      budgetItem: meta.budgetItem,
       yearMonth: meta.yearMonth,
       type: meta.type,
       actualUsd,
@@ -170,7 +232,7 @@ export function buildVarianceRecords(
   const totalVariance = totalActual - totalBudget;
   const variancePct = totalBudget !== 0 ? (totalVariance / totalBudget) * 100 : 0;
   const budgetUsedPercent = totalBudget !== 0 ? (totalActual / totalBudget) * 100 : 0;
-  const runRate = totalActual / monthsPassed;
+  const runRate = totalActual / monthsInScopeCount;
   const forecastYearEnd = runRate * 12;
   const overspendRisk = forecastYearEnd - totalBudget;
 

@@ -1,6 +1,6 @@
 import express from "express";
 import { createServer as createViteServer } from "vite";
-import financeSyncRoutes from "./server/routes/financeSync";
+import financeSyncRoutes from "./server/routes/financeSync.ts";
 
 async function startServer() {
   const app = express();
